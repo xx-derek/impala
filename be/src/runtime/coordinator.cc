@@ -1419,6 +1419,14 @@ void Coordinator::ComputeQuerySummary() {
   COUNTER_SET(PROFILE_InnerNodeSelectivityRatio.Instantiate(query_profile_),
       inner_node_ratio);
 
+  // Set actual CPU cost in the exec summary. This allows clients to compare
+  // estimated vs actual CPU cost.
+  {
+    lock_guard<SpinLock> l(exec_summary_.lock);
+    exec_summary_.thrift_exec_summary.__set_actual_cpu_cost(
+        total_utilization.cpu_user_ns + total_utilization.cpu_sys_ns);
+  }
+
   double skew_threshold = query_state_->query_options().report_skew_limit;
   if (skew_threshold >= 0) {
     // Add skews info (if any)
