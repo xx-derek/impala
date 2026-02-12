@@ -1580,6 +1580,17 @@ public class PlannerTest extends PlannerTestBase {
   }
 
   /**
+   * Test the QueryCpuCostEstimator framework for computing overall CPU cost.
+   */
+  @Test
+  public void testQueryCpuCost() {
+    TQueryOptions options = new TQueryOptions();
+    options.setCompute_processing_cost(true);
+    options.setMax_fragment_instances_per_node(4);
+    runPlannerTestFile("query-cpu-cost", options);
+  }
+
+  /**
    * Test SELECTIVITY hints
    */
   @Test

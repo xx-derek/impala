@@ -1,0 +1,65 @@
+# Test that total CPU cost is computed and exposed in query execution request
+# when COMPUTE_PROCESSING_COST is enabled
+select id, int_col from functional.alltypes where int_col = 1 limit 10;
+---- QUERYOPTIONS
+COMPUTE_PROCESSING_COST=1
+MAX_FRAGMENT_INSTANCES_PER_NODE=4
+---- PLAN
+Max Per-Host Resource Reservation: Memory=0B Threads=1
+Per-Host Resource Estimates: Memory=10MB
+Analyzed query: SELECT id, int_col FROM functional.alltypes WHERE int_col =
+CAST(1 AS INT) LIMIT CAST(10 AS BIGINT)
+
+F00:PLAN FRAGMENT [UNPARTITIONED] hosts=1 instances=1
+|  Per-Instance Resources: mem-estimate=10.00MB mem-reservation=0B thread-reservation=1
+PLAN-ROOT SINK
+|  output exprs: id, int_col
+|  mem-estimate=4.00MB mem-reservation=4.00MB spill-buffer=2.00MB thread-reservation=0
+|
+00:SCAN HDFS [functional.alltypes]
+   partitions=24/24 files=24 size=478.45KB
+   predicates: int_col = CAST(1 AS INT)
+   stored statistics:
+     table: rows=7.30K size=478.45KB
+   extrapolated-rows=disabled max-scan-range-rows=310
+   mem-estimate=16.00MB mem-reservation=0B thread-reservation=0
+   tuple-ids=0 row-size=8B cardinality=730
+   in pipelines: 00(GETNEXT)
+====
+# Test CPU cost with join operation
+select a.id, b.int_col 
+from functional.alltypes a 
+join functional.alltypes b on a.id = b.id
+where a.int_col = 1 limit 10;
+---- QUERYOPTIONS
+COMPUTE_PROCESSING_COST=1
+MAX_FRAGMENT_INSTANCES_PER_NODE=4
+---- PLAN
+Max Per-Host Resource Reservation: Memory=1.94MB Threads=3
+Per-Host Resource Estimates: Memory=36MB
+Analyzed query: SELECT a.id, b.int_col FROM functional.alltypes a INNER
+JOIN functional.alltypes b ON a.id = b.id WHERE a.int_col = CAST(1 AS INT)
+LIMIT CAST(10 AS BIGINT)
+
+F02:PLAN FRAGMENT [UNPARTITIONED] hosts=1 instances=1
+|  Per-Instance Resources: mem-estimate=4.00MB mem-reservation=4.00MB thread-reservation=1
+PLAN-ROOT SINK
+|  output exprs: a.id, b.int_col
+|  mem-estimate=4.00MB mem-reservation=4.00MB spill-buffer=2.00MB thread-reservation=0
+|
+05:EXCHANGE [UNPARTITIONED]
+|  limit: 10
+|  mem-estimate=0B mem-reservation=0B thread-reservation=0
+|  tuple-ids=2 row-size=8B cardinality=10
+|  in pipelines: 02(GETNEXT)
+|
+F01:PLAN FRAGMENT [HASH(b.id)] hosts=3 instances=3
+Per-Instance Resources: mem-estimate=10.02MB mem-reservation=1.94MB thread-reservation=1
+02:HASH JOIN [INNER JOIN, PARTITIONED]
+|  hash predicates: b.id = a.id
+|  fk/pk conjuncts: none
+|  runtime filters: RF000[bloom] <- a.id
+|  mem-estimate=1.94MB mem-reservation=1.94MB spill-buffer=64.00KB thread-reservation=0
+|  tuple-ids=2 row-size=8B cardinality=730
+|  in pipelines: 01(GETNEXT), 00(OPEN)
+====
