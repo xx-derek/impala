@@ -119,4 +119,9 @@ struct TExecSummary {
   // Contains the latest queuing reason if the query is currently queued by admission
   // control.
   8: optional string queued_reason
+
+  // Actual CPU cost consumed during query execution, measured in nanoseconds.
+  // This is the total CPU time (user + system) across all fragment instances.
+  // Populated from the TotalCpuTime counter when query completes.
+  9: optional i64 actual_cpu_cost
 }

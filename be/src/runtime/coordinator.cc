@@ -1419,6 +1419,29 @@ void Coordinator::ComputeQuerySummary() {
   COUNTER_SET(PROFILE_InnerNodeSelectivityRatio.Instantiate(query_profile_),
       inner_node_ratio);
 
+  // Set actual CPU cost in the exec summary. This allows clients to compare
+  // estimated vs actual CPU cost.
+  int64_t actual_cpu_cost_ns = total_utilization.cpu_user_ns + total_utilization.cpu_sys_ns;
+  {
+    lock_guard<SpinLock> l(exec_summary_.lock);
+    exec_summary_.thrift_exec_summary.__set_actual_cpu_cost(actual_cpu_cost_ns);
+  }
+
+  // Log actual CPU cost and comparison with estimated cost if available
+  const TQueryExecRequest& exec_request = exec_params_.query_exec_request();
+  if (exec_request.__isset.total_cpu_cost) {
+    int64_t estimated_cpu_cost = exec_request.total_cpu_cost;
+    double ratio = estimated_cpu_cost > 0 
+        ? (double)actual_cpu_cost_ns / estimated_cpu_cost : 0.0;
+    LOG(INFO) << "Query " << PrintId(query_id()) 
+              << " CPU cost - estimated: " << estimated_cpu_cost 
+              << ", actual: " << actual_cpu_cost_ns
+              << " (" << (ratio * 100.0) << "% of estimate)";
+  } else {
+    LOG(INFO) << "Query " << PrintId(query_id()) 
+              << " actual CPU cost: " << actual_cpu_cost_ns << " ns";
+  }
+
   double skew_threshold = query_state_->query_options().report_skew_limit;
   if (skew_threshold >= 0) {
     // Add skews info (if any)

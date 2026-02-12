@@ -599,6 +599,17 @@ public class Planner {
       return;
     }
 
+    // Compute and set the total CPU cost for the query
+    QueryCpuCostEstimator costEstimator = new QueryCpuCostEstimator(postOrderFragments);
+    long totalCpuCost = costEstimator.computeTotalCost();
+    if (totalCpuCost >= 0) {
+      request.setTotal_cpu_cost(totalCpuCost);
+      LOG.info("Total CPU cost: " + totalCpuCost);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(costEstimator.getExplainString());
+      }
+    }
+
     if (LOG.isTraceEnabled()) {
       LOG.trace("Computing effective parallelism."
           + " numNode=" + rootAnalyzer.numExecutorsForPlanning()
