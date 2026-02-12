@@ -1160,5 +1160,10 @@ struct TQueryExecRequest {
   // Propagated value from Analyzer.getMaxParallelismPerNode().
   // Used by scheduler.cc as sanity check during scheduling.
   19: optional i32 max_parallelism_per_node
+
+  // Total estimated CPU cost to execute the entire query across all fragments.
+  // This represents the total amount of work (in abstract cost units) required
+  // to execute the query. Only set if COMPUTE_PROCESSING_COST option is True.
+  20: optional i64 total_cpu_cost
 }
 

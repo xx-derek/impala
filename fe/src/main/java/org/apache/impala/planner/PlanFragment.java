@@ -1047,6 +1047,14 @@ public class PlanFragment extends TreeNode<PlanFragment> {
     return rootSegment_.getProcessingCost();
   }
 
+  /**
+   * Returns the root CostingSegment for this fragment.
+   * Used to access the fragment's cost tree for query-level cost estimation.
+   */
+  protected CostingSegment getRootSegment() {
+    return rootSegment_;
+  }
+
   private List<Long> costingSegmentSummary() {
     return rootSegment_.getNodesPostOrder()
         .stream()
