@@ -2,7 +2,10 @@
 
 ## Overview
 
-The Query CPU Cost Estimation Framework provides a mechanism to estimate the overall CPU cost required to execute a single query in Impala. This framework aggregates the processing costs from all plan fragments to provide a query-level cost metric.
+The Query CPU Cost Estimation Framework provides a mechanism to estimate the overall CPU cost required to execute a single query in Impala. This framework:
+1. **Estimates** CPU cost before query execution (planning phase)
+2. **Records** actual CPU cost after query execution completes
+3. **Compares** estimated vs actual cost for performance analysis
 
 ## Architecture
 
@@ -67,6 +70,25 @@ String breakdown = estimator.getExplainString();
 System.out.println(breakdown);
 ```
 
+### Accessing Actual CPU Cost
+
+After query execution completes, the actual CPU cost is available in `TExecSummary`:
+
+```java
+TExecSummary execSummary = ...;
+if (execSummary.isSetActual_cpu_cost()) {
+    long actualCost = execSummary.getActual_cpu_cost();
+    System.out.println("Actual CPU cost: " + actualCost + " ns");
+    
+    // Compare with estimate if available
+    if (request.isSetTotal_cpu_cost()) {
+        long estimatedCost = request.getTotal_cpu_cost();
+        double accuracy = (double)actualCost / estimatedCost * 100.0;
+        System.out.println("Estimate accuracy: " + accuracy + "%");
+    }
+}
+```
+
 ## Cost Calculation
 
 The total query CPU cost is calculated as follows:
@@ -83,24 +105,60 @@ The cost takes into account:
 - Aggregation costs
 - Sort costs
 
+### Actual CPU Cost Tracking
+
+After query execution completes, the actual CPU time consumed is recorded:
+
+1. **Backend Measurement**: Each fragment instance tracks CPU time (user + system)
+2. **Aggregation**: The coordinator collects CPU utilization from all backends
+3. **Recording**: Total CPU time is stored in both:
+   - Runtime profile counter: `TotalCpuTime` (nanoseconds)
+   - Exec summary field: `actual_cpu_cost` (nanoseconds)
+
+The actual cost represents the real CPU time consumed during execution across all fragment instances.
+
+### Comparison: Estimated vs Actual
+
+The framework logs a comparison when query completes:
+
+```
+Query <query_id> CPU cost - estimated: 1000000, actual: 950000 (95% of estimate)
+```
+
+This helps in:
+- Validating cost model accuracy
+- Identifying queries where estimates are significantly off
+- Tuning cost coefficients for better predictions
+
 ## Implementation Details
 
 ### Thrift Changes
 
-Added `total_cpu_cost` field to `TQueryExecRequest` in `common/thrift/Query.thrift`:
-
+**TQueryExecRequest** (`common/thrift/Query.thrift`):
 ```thrift
-20: optional i64 total_cpu_cost
+20: optional i64 total_cpu_cost  // Estimated cost before execution
+```
+
+**TExecSummary** (`common/thrift/ExecStats.thrift`):
+```thrift
+9: optional i64 actual_cpu_cost  // Actual cost after execution
 ```
 
 ### Integration Points
 
-1. **Planner.computeProcessingCost()**
+1. **Planner.computeProcessingCost()** (Frontend - Planning phase)
    - Creates QueryCpuCostEstimator instance
-   - Computes total cost after fragment costs are available
+   - Computes estimated total cost after fragment costs are available
    - Sets `total_cpu_cost` in TQueryExecRequest
+   - Logs: "Total CPU cost: <estimated>"
 
-2. **PlanFragment.getRootSegment()**
+2. **Coordinator.ComputeQuerySummary()** (Backend - Completion phase)
+   - Collects CPU utilization from all backends
+   - Computes actual total CPU time (user + system)
+   - Sets `actual_cpu_cost` in TExecSummary
+   - Logs comparison: "Query <id> CPU cost - estimated: X, actual: Y (Z% of estimate)"
+
+3. **PlanFragment.getRootSegment()**
    - Provides access to fragment's root CostingSegment
    - Enables cost tree traversal for aggregation
 
